@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "monorepo": true,
+  "root": "apps/timeoff-service",
+  "sourceRoot": "apps/timeoff-service/src",
+  "projects": {
+    "timeoff-service": {
+      "type": "application",
+      "root": "apps/timeoff-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/timeoff-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/timeoff-service/tsconfig.app.json"
+      }
+    },
+    "hcm-mock": {
+      "type": "application",
+      "root": "apps/hcm-mock",
+      "entryFile": "main",
+      "sourceRoot": "apps/hcm-mock/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/hcm-mock/tsconfig.app.json"
+      }
+    },
+    "config": {
+      "type": "library",
+      "root": "libs/config",
+      "entryFile": "index",
+      "sourceRoot": "libs/config/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/config/tsconfig.lib.json"
+      }
+    },
+    "testing": {
+      "type": "library",
+      "root": "libs/testing",
+      "entryFile": "index",
+      "sourceRoot": "libs/testing/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/testing/tsconfig.lib.json"
+      }
+    }
+  }
+}
+

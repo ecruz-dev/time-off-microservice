@@ -1,0 +1,19 @@
+{
+  "rootDir": "../../..",
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "testEnvironment": "node",
+  "testRegex": "apps/timeoff-service/test/.*\\.e2e-spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "<rootDir>/tsconfig.json"
+      }
+    ]
+  },
+  "moduleNameMapper": {
+    "^@app/config$": "<rootDir>/libs/config/src/index.ts",
+    "^@app/testing$": "<rootDir>/libs/testing/src/index.ts"
+  }
+}
+
