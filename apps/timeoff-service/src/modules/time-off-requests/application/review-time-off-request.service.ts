@@ -15,6 +15,7 @@ import {
   BalanceSnapshotRepository,
   EmployeeRepository,
   IdempotencyKeyRepository,
+  OutboxEventRepository,
   TimeOffRequestRepository,
 } from '../../../database/repositories/interfaces';
 import {
@@ -24,6 +25,7 @@ import {
   hasSufficientEffectiveBalance,
 } from '../../balances/domain';
 import { HcmClient } from '../../hcm-sync/infrastructure/hcm.client';
+import { APPROVAL_SYNC_RETRY_EVENT } from '../../outbox/outbox.types';
 import {
   RequestCreationError,
   requestCreationErrorCodes,
@@ -49,6 +51,7 @@ export class ReviewTimeOffRequestService {
     private readonly timeOffRequestRepository: TimeOffRequestRepository,
     private readonly auditLogRepository: AuditLogRepository,
     private readonly idempotencyKeyRepository: IdempotencyKeyRepository,
+    private readonly outboxEventRepository: OutboxEventRepository,
     private readonly hcmClient: HcmClient,
   ) {}
 
@@ -287,6 +290,7 @@ export class ReviewTimeOffRequestService {
       });
     } catch (error) {
       return this.markRequestSyncFailed({
+        enqueueRetry: true,
         managerId: input.managerId,
         message: this.extractUpstreamFailureMessage(
           error,
@@ -318,6 +322,7 @@ export class ReviewTimeOffRequestService {
       }
 
       return this.markRequestSyncFailed({
+        enqueueRetry: true,
         managerId: input.managerId,
         message: adjustmentResponse.message,
         now: input.now,
@@ -451,6 +456,7 @@ export class ReviewTimeOffRequestService {
     }
 
     return this.markRequestSyncFailed({
+      enqueueRetry: false,
       managerId: input.managerId,
       message:
         response?.message ?? 'Unable to refresh the authoritative HCM balance.',
@@ -511,6 +517,7 @@ export class ReviewTimeOffRequestService {
   }
 
   private async markRequestSyncFailed(input: {
+    enqueueRetry: boolean;
     managerId: string;
     message: string;
     now: Date;
@@ -545,6 +552,43 @@ export class ReviewTimeOffRequestService {
         },
         tx,
       );
+
+      if (input.enqueueRetry) {
+        await this.outboxEventRepository.create(
+          {
+            eventType: APPROVAL_SYNC_RETRY_EVENT,
+            aggregateType: 'time_off_request',
+            aggregateId: input.request.id,
+            payload: JSON.stringify({
+              employeeId: input.request.employeeId,
+              locationId: input.request.locationId,
+              managerId: input.managerId,
+              reason: input.reviewReason,
+              requestId: input.request.id,
+              requestedUnits: input.request.requestedUnits,
+            }),
+          },
+          tx,
+        );
+
+        await this.auditLogRepository.create(
+          {
+            action: 'TIME_OFF_REQUEST_SYNC_RETRY_ENQUEUED',
+            actorType: AuditActorType.SYSTEM,
+            actorId: 'outbox-queue',
+            requestId: input.request.id,
+            entityType: 'time_off_request',
+            entityId: input.request.id,
+            metadata: JSON.stringify({
+              message: input.message,
+              reviewReason: input.reviewReason,
+              status: TimeOffRequestStatus.SYNC_FAILED,
+            }),
+            occurredAt: input.now,
+          },
+          tx,
+        );
+      }
 
       return failedRequest;
     });

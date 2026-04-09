@@ -10,6 +10,12 @@ export interface HcmRuntimeConfig {
   requestTimeoutMs: number;
 }
 
+export interface OutboxRuntimeConfig {
+  baseDelayMs: number;
+  batchSize: number;
+  maxAttempts: number;
+}
+
 interface HttpRuntimeConfigOptions {
   defaultHost?: string;
   defaultPort: number;
@@ -50,6 +56,23 @@ export function getHcmRuntimeConfig(): HcmRuntimeConfig {
     internalSyncToken:
       process.env.HCM_INTERNAL_SYNC_TOKEN ?? 'local-dev-internal-sync-token',
     requestTimeoutMs: parsePort(requestTimeoutValue, 'HCM_REQUEST_TIMEOUT_MS'),
+  };
+}
+
+export function getOutboxRuntimeConfig(): OutboxRuntimeConfig {
+  return {
+    baseDelayMs: parsePort(
+      process.env.OUTBOX_RETRY_BASE_DELAY_MS ?? '1000',
+      'OUTBOX_RETRY_BASE_DELAY_MS',
+    ),
+    batchSize: parsePort(
+      process.env.OUTBOX_BATCH_SIZE ?? '25',
+      'OUTBOX_BATCH_SIZE',
+    ),
+    maxAttempts: parsePort(
+      process.env.OUTBOX_MAX_ATTEMPTS ?? '5',
+      'OUTBOX_MAX_ATTEMPTS',
+    ),
   };
 }
 

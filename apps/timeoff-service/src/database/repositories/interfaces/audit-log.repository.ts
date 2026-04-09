@@ -12,5 +12,9 @@ export abstract class AuditLogRepository {
     requestId: string,
     tx?: PrismaTransactionClient,
   ): Promise<AuditLog[]>;
-}
 
+  abstract listBySyncRunId(
+    syncRunId: string,
+    tx?: PrismaTransactionClient,
+  ): Promise<AuditLog[]>;
+}

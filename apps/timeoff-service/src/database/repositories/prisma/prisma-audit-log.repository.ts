@@ -23,8 +23,17 @@ export class PrismaAuditLogRepository extends AuditLogRepository {
   ): Promise<AuditLog[]> {
     return (tx ?? this.prisma).auditLog.findMany({
       where: { requestId },
-      orderBy: { occurredAt: 'asc' },
+      orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async listBySyncRunId(
+    syncRunId: string,
+    tx?: PrismaTransactionClient,
+  ): Promise<AuditLog[]> {
+    return (tx ?? this.prisma).auditLog.findMany({
+      where: { syncRunId },
+      orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
     });
   }
 }
-

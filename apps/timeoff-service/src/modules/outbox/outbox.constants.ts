@@ -1,0 +1,1 @@
+export const OUTBOX_RUNTIME_CONFIG = Symbol('OUTBOX_RUNTIME_CONFIG');

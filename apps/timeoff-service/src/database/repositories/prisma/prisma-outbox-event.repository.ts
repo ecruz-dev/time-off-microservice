@@ -22,7 +22,12 @@ export class PrismaOutboxEventRepository extends OutboxEventRepository {
     tx?: PrismaTransactionClient,
   ): Promise<OutboxEvent[]> {
     return (tx ?? this.prisma).outboxEvent.findMany({
-      where: { status: OutboxEventStatus.PENDING },
+      where: {
+        status: OutboxEventStatus.PENDING,
+        availableAt: {
+          lte: new Date(),
+        },
+      },
       orderBy: { availableAt: 'asc' },
       take: limit,
     });
@@ -46,4 +51,3 @@ export class PrismaOutboxEventRepository extends OutboxEventRepository {
     });
   }
 }
-

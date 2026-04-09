@@ -160,11 +160,11 @@ export class HcmBalanceStoreService {
 
       this.forcedAdjustmentError = null;
 
-      return this.storeAdjustmentResponse(request.idempotencyKey, {
+      return {
         accepted: false,
         code: forcedError.code,
         message: forcedError.message,
-      });
+      };
     }
 
     const mutableBalance =

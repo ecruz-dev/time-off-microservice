@@ -31,6 +31,7 @@ describe('ReconciliationService', () => {
     auditLogRepository = {
       create: jest.fn(),
       listByRequestId: jest.fn(),
+      listBySyncRunId: jest.fn(),
     };
     balanceReservationRepository = {
       create: jest.fn(),

@@ -22,6 +22,6 @@ import { HcmClient } from './infrastructure/hcm.client';
     HcmSyncService,
     InternalSyncTokenGuard,
   ],
-  exports: [HcmClient, HcmSyncService],
+  exports: [HCM_RUNTIME_CONFIG, HcmClient, HcmSyncService, InternalSyncTokenGuard],
 })
 export class HcmSyncModule {}

@@ -73,6 +73,7 @@ describe('CreateTimeOffRequestService', () => {
     auditLogRepository = {
       create: jest.fn(),
       listByRequestId: jest.fn(),
+      listBySyncRunId: jest.fn(),
     };
     idempotencyKeyRepository = {
       create: jest.fn(),

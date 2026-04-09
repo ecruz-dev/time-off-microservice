@@ -55,6 +55,7 @@ describe('ReviewTimeOffRequestService (integration)', () => {
     hcmClientMock.getBalance.mockReset();
     hcmClientMock.applyBalanceAdjustment.mockReset();
     await prisma.auditLog.deleteMany();
+    await prisma.outboxEvent.deleteMany();
     await prisma.idempotencyKey.deleteMany();
     await prisma.balanceReservation.deleteMany();
     await prisma.timeOffRequest.deleteMany();

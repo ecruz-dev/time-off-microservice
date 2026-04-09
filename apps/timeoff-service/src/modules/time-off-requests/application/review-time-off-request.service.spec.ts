@@ -2,10 +2,12 @@ import {
   AuditActorType,
   BalanceReservationStatus,
   IdempotencyStatus,
+  OutboxEventStatus,
   TimeOffRequestStatus,
 } from '@prisma/client';
 
 import {
+  OutboxEventBuilder,
   BalanceReservationBuilder,
   BalanceSnapshotBuilder,
   EmployeeBuilder,
@@ -20,6 +22,7 @@ import {
   BalanceSnapshotRepository,
   EmployeeRepository,
   IdempotencyKeyRepository,
+  OutboxEventRepository,
   TimeOffRequestRepository,
 } from '../../../database/repositories/interfaces';
 import { HcmClient } from '../../hcm-sync/infrastructure/hcm.client';
@@ -33,6 +36,7 @@ describe('ReviewTimeOffRequestService', () => {
   let timeOffRequestRepository: jest.Mocked<TimeOffRequestRepository>;
   let auditLogRepository: jest.Mocked<AuditLogRepository>;
   let idempotencyKeyRepository: jest.Mocked<IdempotencyKeyRepository>;
+  let outboxEventRepository: jest.Mocked<OutboxEventRepository>;
   let hcmClient: jest.Mocked<Pick<HcmClient, 'applyBalanceAdjustment' | 'getBalance'>>;
   let service: ReviewTimeOffRequestService;
 
@@ -74,10 +78,16 @@ describe('ReviewTimeOffRequestService', () => {
     auditLogRepository = {
       create: jest.fn(),
       listByRequestId: jest.fn(),
+      listBySyncRunId: jest.fn(),
     };
     idempotencyKeyRepository = {
       create: jest.fn(),
       findByScopeAndKey: jest.fn(),
+      markStatus: jest.fn(),
+    };
+    outboxEventRepository = {
+      create: jest.fn(),
+      listPending: jest.fn(),
       markStatus: jest.fn(),
     };
     hcmClient = {
@@ -92,6 +102,7 @@ describe('ReviewTimeOffRequestService', () => {
       timeOffRequestRepository,
       auditLogRepository,
       idempotencyKeyRepository,
+      outboxEventRepository,
       hcmClient as unknown as HcmClient,
     );
   });
@@ -190,6 +201,11 @@ describe('ReviewTimeOffRequestService', () => {
       occurredAt: new Date(),
       createdAt: new Date(),
     });
+    outboxEventRepository.create.mockResolvedValue(
+      new OutboxEventBuilder()
+        .withEventType('time_off_request.approval_sync_retry.v1')
+        .build(),
+    );
     idempotencyKeyRepository.markStatus.mockResolvedValue(
       new IdempotencyKeyBuilder()
         .withId('idem_approve_1')
@@ -290,6 +306,11 @@ describe('ReviewTimeOffRequestService', () => {
       occurredAt: new Date(),
       createdAt: new Date(),
     });
+    outboxEventRepository.create.mockResolvedValue(
+      new OutboxEventBuilder()
+        .withEventType('time_off_request.approval_sync_retry.v1')
+        .build(),
+    );
     idempotencyKeyRepository.markStatus.mockResolvedValue(
       new IdempotencyKeyBuilder()
         .withId('idem_reject_1')
@@ -399,6 +420,11 @@ describe('ReviewTimeOffRequestService', () => {
       occurredAt: new Date(),
       createdAt: new Date(),
     });
+    outboxEventRepository.create.mockResolvedValue(
+      new OutboxEventBuilder()
+        .withEventType('time_off_request.approval_sync_retry.v1')
+        .build(),
+    );
     idempotencyKeyRepository.markStatus.mockResolvedValue(
       new IdempotencyKeyBuilder()
         .withId('idem_review_1')
@@ -504,6 +530,12 @@ describe('ReviewTimeOffRequestService', () => {
       occurredAt: new Date(),
       createdAt: new Date(),
     });
+    outboxEventRepository.create.mockResolvedValue(
+      new OutboxEventBuilder()
+        .withEventType('time_off_request.approval_sync_retry.v1')
+        .withStatus(OutboxEventStatus.PENDING)
+        .build(),
+    );
     idempotencyKeyRepository.markStatus.mockResolvedValue(
       new IdempotencyKeyBuilder()
         .withId('idem_sync_failed_1')
@@ -523,6 +555,14 @@ describe('ReviewTimeOffRequestService', () => {
       pendingRequest.id,
       expect.objectContaining({
         status: TimeOffRequestStatus.SYNC_FAILED,
+      }),
+      expect.anything(),
+    );
+    expect(outboxEventRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aggregateId: pendingRequest.id,
+        aggregateType: 'time_off_request',
+        eventType: 'time_off_request.approval_sync_retry.v1',
       }),
       expect.anything(),
     );
@@ -626,6 +666,11 @@ describe('ReviewTimeOffRequestService', () => {
       occurredAt: new Date(),
       createdAt: new Date(),
     });
+    outboxEventRepository.create.mockResolvedValue(
+      new OutboxEventBuilder()
+        .withEventType('time_off_request.approval_sync_retry.v1')
+        .build(),
+    );
     idempotencyKeyRepository.markStatus.mockResolvedValue(
       new IdempotencyKeyBuilder()
         .withId('idem_review_resume_1')

@@ -74,6 +74,7 @@ describe('manager review mutations (e2e)', () => {
     await request(hcmMockApp.getHttpServer()).post('/scenarios/reset').expect(201);
 
     await prisma.auditLog.deleteMany();
+    await prisma.outboxEvent.deleteMany();
     await prisma.idempotencyKey.deleteMany();
     await prisma.balanceReservation.deleteMany();
     await prisma.timeOffRequest.deleteMany();
@@ -275,6 +276,7 @@ describe('manager review mutations (e2e)', () => {
     const reservation = await prisma.balanceReservation.findUnique({
       where: { requestId },
     });
+    const outboxEvents = await prisma.outboxEvent.findMany();
 
     expect(response.body.errors).toBeUndefined();
     expect(response.body.data.approveTimeOffRequest).toMatchObject({
@@ -282,6 +284,12 @@ describe('manager review mutations (e2e)', () => {
       status: TimeOffRequestStatus.SYNC_FAILED,
     });
     expect(reservation?.status).toBe(BalanceReservationStatus.ACTIVE);
+    expect(outboxEvents).toHaveLength(1);
+    expect(outboxEvents[0]).toMatchObject({
+      aggregateId: requestId,
+      aggregateType: 'time_off_request',
+      eventType: 'time_off_request.approval_sync_retry.v1',
+    });
   });
 
   async function createEmployeeRequest(idempotencyKey: string): Promise<string> {

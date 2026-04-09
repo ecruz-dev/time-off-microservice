@@ -177,6 +177,25 @@ export class HcmSyncService {
         },
       );
 
+      await this.auditLogRepository.create({
+        action: 'HCM_BALANCE_BATCH_SYNC_FAILED',
+        actorType:
+          source === HCM_BATCH_PUSH_SOURCE
+            ? AuditActorType.HCM
+            : AuditActorType.SYSTEM,
+        actorId: source,
+        syncRunId: failedRun.id,
+        entityType: 'sync_run',
+        entityId: failedRun.id,
+        metadata: JSON.stringify({
+          errorSummary: message,
+          externalRunId: payload.runId,
+          recordsReceived: payload.records.length,
+          recordsApplied: 0,
+        }),
+        occurredAt: new Date(),
+      });
+
       return this.toBatchSyncSummary(failedRun, false, 0, 0, 0);
     }
   }

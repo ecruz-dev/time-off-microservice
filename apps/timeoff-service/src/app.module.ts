@@ -5,6 +5,8 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { HcmSyncModule } from './modules/hcm-sync/hcm-sync.module';
+import { OperationalAuditModule } from './modules/operational-audit/operational-audit.module';
+import { OutboxModule } from './modules/outbox/outbox.module';
 import { TimeOffRequestsModule } from './modules/time-off-requests/time-off-requests.module';
 
 @Module({
@@ -18,6 +20,8 @@ import { TimeOffRequestsModule } from './modules/time-off-requests/time-off-requ
     DatabaseModule,
     HealthModule,
     HcmSyncModule,
+    OperationalAuditModule,
+    OutboxModule,
     TimeOffRequestsModule,
   ],
 })
