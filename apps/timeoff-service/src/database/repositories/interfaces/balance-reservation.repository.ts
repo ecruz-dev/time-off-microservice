@@ -14,10 +14,14 @@ export abstract class BalanceReservationRepository {
     tx?: PrismaTransactionClient,
   ): Promise<BalanceReservation[]>;
 
+  abstract findByRequestId(
+    requestId: string,
+    tx?: PrismaTransactionClient,
+  ): Promise<BalanceReservation | null>;
+
   abstract updateStatusByRequestId(
     requestId: string,
     status: BalanceReservationStatus,
     tx?: PrismaTransactionClient,
   ): Promise<BalanceReservation>;
 }
-

@@ -62,12 +62,13 @@ describe('CreateTimeOffRequestService', () => {
     balanceReservationRepository = {
       create: jest.fn(),
       findActiveByEmployeeAndLocation: jest.fn(),
+      findByRequestId: jest.fn(),
       updateStatusByRequestId: jest.fn(),
     };
     timeOffRequestRepository = {
       create: jest.fn(),
       findById: jest.fn(),
-      updateStatus: jest.fn(),
+      updateDecision: jest.fn(),
     };
     auditLogRepository = {
       create: jest.fn(),

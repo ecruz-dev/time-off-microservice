@@ -39,6 +39,15 @@ export class PrismaBalanceReservationRepository extends BalanceReservationReposi
     });
   }
 
+  async findByRequestId(
+    requestId: string,
+    tx?: PrismaTransactionClient,
+  ): Promise<BalanceReservation | null> {
+    return (tx ?? this.prisma).balanceReservation.findUnique({
+      where: { requestId },
+    });
+  }
+
   async updateStatusByRequestId(
     requestId: string,
     status: BalanceReservationStatus,
@@ -50,4 +59,3 @@ export class PrismaBalanceReservationRepository extends BalanceReservationReposi
     });
   }
 }
-

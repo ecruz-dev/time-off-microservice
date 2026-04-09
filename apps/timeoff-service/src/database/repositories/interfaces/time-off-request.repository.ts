@@ -13,11 +13,13 @@ export abstract class TimeOffRequestRepository {
     tx?: PrismaTransactionClient,
   ): Promise<TimeOffRequest | null>;
 
-  abstract updateStatus(
+  abstract updateDecision(
     id: string,
-    status: TimeOffRequestStatus,
-    managerDecisionReason?: string | null,
+    data: {
+      status: TimeOffRequestStatus;
+      managerDecisionReason?: string | null;
+      approvedBy?: string | null;
+    },
     tx?: PrismaTransactionClient,
   ): Promise<TimeOffRequest>;
 }
-

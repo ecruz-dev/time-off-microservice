@@ -34,6 +34,9 @@ export class TimeOffRequestGraphqlType {
   @Field(() => String, { nullable: true })
   managerDecisionReason!: string | null;
 
+  @Field(() => ID, { nullable: true })
+  approvedBy!: string | null;
+
   @Field(() => GraphQLISODateTime)
   createdAt!: Date;
 

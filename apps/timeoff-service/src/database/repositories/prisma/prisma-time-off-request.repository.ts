@@ -26,17 +26,21 @@ export class PrismaTimeOffRequestRepository extends TimeOffRequestRepository {
     });
   }
 
-  async updateStatus(
+  async updateDecision(
     id: string,
-    status: TimeOffRequestStatus,
-    managerDecisionReason?: string | null,
+    data: {
+      status: TimeOffRequestStatus;
+      managerDecisionReason?: string | null;
+      approvedBy?: string | null;
+    },
     tx?: PrismaTransactionClient,
   ): Promise<TimeOffRequest> {
     return (tx ?? this.prisma).timeOffRequest.update({
       where: { id },
       data: {
-        status,
-        managerDecisionReason,
+        status: data.status,
+        managerDecisionReason: data.managerDecisionReason,
+        approvedBy: data.approvedBy,
         version: {
           increment: 1,
         },
