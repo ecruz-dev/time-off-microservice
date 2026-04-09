@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum TimeOffRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  SYNC_FAILED
+  REQUIRES_REVIEW
+}
+
+enum BalanceReservationStatus {
+  ACTIVE
+  RELEASED
+  CONSUMED
+}
+
+enum SyncRunStatus {
+  PROCESSING
+  ACCEPTED
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum OutboxEventStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+enum AuditActorType {
+  EMPLOYEE
+  MANAGER
+  SYSTEM
+  HCM
+}
+
+enum IdempotencyStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model Employee {
+  id          String   @id
+  email       String   @unique
+  displayName String   @map("display_name")
+  locationId  String   @map("location_id")
+  managerId   String?  @map("manager_id")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("employees")
+}
+
+model BalanceSnapshot {
+  id              String   @id @default(cuid())
+  employeeId      String   @map("employee_id")
+  locationId      String   @map("location_id")
+  availableUnits  Int      @map("available_units")
+  sourceVersion   String   @map("source_version")
+  sourceUpdatedAt DateTime @map("source_updated_at")
+  lastSyncedAt    DateTime @default(now()) @map("last_synced_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([employeeId, locationId], map: "balance_snapshots_employee_location_key")
+  @@index([locationId], map: "balance_snapshots_location_id_idx")
+  @@map("balance_snapshots")
+}
+
+model TimeOffRequest {
+  id                    String               @id @default(cuid())
+  employeeId            String               @map("employee_id")
+  locationId            String               @map("location_id")
+  startDate             DateTime             @map("start_date")
+  endDate               DateTime             @map("end_date")
+  requestedUnits        Int                  @map("requested_units")
+  reason                String?
+  status                TimeOffRequestStatus @default(PENDING)
+  managerDecisionReason String?              @map("manager_decision_reason")
+  createdBy             String               @map("created_by")
+  approvedBy            String?              @map("approved_by")
+  version               Int                  @default(1)
+  createdAt             DateTime             @default(now()) @map("created_at")
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+  reservation           BalanceReservation?
+  auditLogs             AuditLog[]
+
+  @@index([employeeId, locationId, status], map: "time_off_requests_employee_location_status_idx")
+  @@index([status, locationId], map: "time_off_requests_status_location_idx")
+  @@map("time_off_requests")
+}
+
+model BalanceReservation {
+  id            String                   @id @default(cuid())
+  requestId     String                   @unique @map("request_id")
+  employeeId    String                   @map("employee_id")
+  locationId    String                   @map("location_id")
+  reservedUnits Int                      @map("reserved_units")
+  status        BalanceReservationStatus @default(ACTIVE)
+  expiresAt     DateTime?                @map("expires_at")
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
+  request       TimeOffRequest           @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, locationId, status], map: "balance_reservations_employee_location_status_idx")
+  @@map("balance_reservations")
+}
+
+model SyncRun {
+  id              String        @id @default(cuid())
+  source          String
+  externalRunId   String?       @unique @map("external_run_id")
+  status          SyncRunStatus @default(PROCESSING)
+  sentAt          DateTime?     @map("sent_at")
+  startedAt       DateTime      @default(now()) @map("started_at")
+  completedAt     DateTime?     @map("completed_at")
+  recordsReceived Int           @default(0) @map("records_received")
+  recordsApplied  Int           @default(0) @map("records_applied")
+  errorSummary    String?       @map("error_summary")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  auditLogs       AuditLog[]
+
+  @@map("sync_runs")
+}
+
+model OutboxEvent {
+  id            String            @id @default(cuid())
+  eventType     String            @map("event_type")
+  aggregateType String            @map("aggregate_type")
+  aggregateId   String            @map("aggregate_id")
+  payload       String
+  status        OutboxEventStatus @default(PENDING)
+  attempts      Int               @default(0)
+  availableAt   DateTime          @default(now()) @map("available_at")
+  processedAt   DateTime?         @map("processed_at")
+  lastError     String?           @map("last_error")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  @@index([status, availableAt], map: "outbox_events_status_available_at_idx")
+  @@map("outbox_events")
+}
+
+model AuditLog {
+  id         String          @id @default(cuid())
+  action     String
+  actorType  AuditActorType  @map("actor_type")
+  actorId    String          @map("actor_id")
+  requestId  String?         @map("request_id")
+  syncRunId  String?         @map("sync_run_id")
+  entityType String          @map("entity_type")
+  entityId   String          @map("entity_id")
+  metadata   String?
+  occurredAt DateTime        @default(now()) @map("occurred_at")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  request    TimeOffRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  syncRun    SyncRun?        @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+
+  @@index([requestId], map: "audit_logs_request_id_idx")
+  @@index([syncRunId], map: "audit_logs_sync_run_id_idx")
+  @@index([entityType, entityId], map: "audit_logs_entity_idx")
+  @@map("audit_logs")
+}
+
+model IdempotencyKey {
+  id             String            @id @default(cuid())
+  idempotencyKey String            @map("idempotency_key")
+  scope          String
+  fingerprint    String
+  status         IdempotencyStatus @default(IN_PROGRESS)
+  responseCode   Int?              @map("response_code")
+  responseBody   String?           @map("response_body")
+  errorCode      String?           @map("error_code")
+  lockedAt       DateTime?         @map("locked_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@unique([scope, idempotencyKey], map: "idempotency_keys_scope_key")
+  @@map("idempotency_keys")
+}

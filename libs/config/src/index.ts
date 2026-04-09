@@ -27,6 +27,10 @@ export function getHttpRuntimeConfig(
   };
 }
 
+export function getDatabaseUrl(): string {
+  return process.env.DATABASE_URL ?? 'file:./dev.db';
+}
+
 function parsePort(portValue: string, portEnv: string): number {
   const parsedPort = Number.parseInt(portValue, 10);
 
@@ -36,4 +40,3 @@ function parsePort(portValue: string, portEnv: string): number {
 
   return parsedPort;
 }
-
