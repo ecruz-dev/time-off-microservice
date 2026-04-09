@@ -8,7 +8,27 @@ export abstract class TestDataBuilder<T extends object> {
   }
 
   build(): T {
-    return structuredClone(this.initialData);
+    return cloneValue(this.initialData);
   }
 }
 
+function cloneValue<T>(value: T): T {
+  if (value instanceof Date) {
+    return new Date(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneValue(item)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entryValue]) => [
+        key,
+        cloneValue(entryValue),
+      ]),
+    ) as T;
+  }
+
+  return value;
+}
