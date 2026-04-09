@@ -4,6 +4,12 @@ export interface HttpRuntimeConfig {
   port: number;
 }
 
+export interface HcmRuntimeConfig {
+  baseUrl: string;
+  internalSyncToken: string;
+  requestTimeoutMs: number;
+}
+
 interface HttpRuntimeConfigOptions {
   defaultHost?: string;
   defaultPort: number;
@@ -29,6 +35,22 @@ export function getHttpRuntimeConfig(
 
 export function getDatabaseUrl(): string {
   return process.env.DATABASE_URL ?? 'file:./dev.db';
+}
+
+export function getHcmRuntimeConfig(): HcmRuntimeConfig {
+  const mockPort = process.env.HCM_MOCK_PORT
+    ? parsePort(process.env.HCM_MOCK_PORT, 'HCM_MOCK_PORT')
+    : 3001;
+  const baseUrl =
+    process.env.HCM_BASE_URL ?? `http://127.0.0.1:${mockPort}`;
+  const requestTimeoutValue = process.env.HCM_REQUEST_TIMEOUT_MS ?? '5000';
+
+  return {
+    baseUrl: baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`,
+    internalSyncToken:
+      process.env.HCM_INTERNAL_SYNC_TOKEN ?? 'local-dev-internal-sync-token',
+    requestTimeoutMs: parsePort(requestTimeoutValue, 'HCM_REQUEST_TIMEOUT_MS'),
+  };
 }
 
 function parsePort(portValue: string, portEnv: string): number {
