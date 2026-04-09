@@ -217,4 +217,82 @@ describe('ReviewTimeOffRequestService (integration)', () => {
       status: BalanceReservationStatus.RELEASED,
     });
   });
+
+  it('approves a reconciled request without re-consuming a released reservation', async () => {
+    const requestRecord = await prisma.timeOffRequest.create({
+      data: {
+        employeeId: 'emp_alice',
+        locationId: 'loc_ny',
+        startDate: new Date('2026-05-20T00:00:00.000Z'),
+        endDate: new Date('2026-05-21T00:00:00.000Z'),
+        requestedUnits: 2000,
+        reason: 'Anniversary leave',
+        status: TimeOffRequestStatus.REQUIRES_REVIEW,
+        createdBy: 'emp_alice',
+      },
+    });
+
+    await prisma.balanceReservation.create({
+      data: {
+        requestId: requestRecord.id,
+        employeeId: 'emp_alice',
+        locationId: 'loc_ny',
+        reservedUnits: 2000,
+        status: BalanceReservationStatus.RELEASED,
+      },
+    });
+
+    hcmClientMock.getBalance.mockResolvedValue({
+      employeeId: 'emp_alice',
+      locationId: 'loc_ny',
+      availableUnits: 8000,
+      sourceVersion: '2026-04-10T12:00:00.000Z#3',
+      sourceUpdatedAt: '2026-04-10T12:00:00.000Z',
+    });
+    hcmClientMock.applyBalanceAdjustment.mockResolvedValue({
+      accepted: true,
+      employeeId: 'emp_alice',
+      locationId: 'loc_ny',
+      availableUnits: 6000,
+      sourceVersion: '2026-04-10T12:01:00.000Z#4',
+      sourceUpdatedAt: '2026-04-10T12:01:00.000Z',
+    });
+
+    const result = await service.execute({
+      actorId: 'mgr_sam',
+      decision: 'APPROVE',
+      idempotencyKey: 'integration-approve-released-1',
+      reason: 'Approved after HCM anniversary refresh',
+      requestId: requestRecord.id,
+    });
+
+    const updatedRequest = await prisma.timeOffRequest.findUnique({
+      where: { id: requestRecord.id },
+    });
+    const reservation = await prisma.balanceReservation.findUnique({
+      where: { requestId: requestRecord.id },
+    });
+    const snapshot = await prisma.balanceSnapshot.findUnique({
+      where: {
+        employeeId_locationId: {
+          employeeId: 'emp_alice',
+          locationId: 'loc_ny',
+        },
+      },
+    });
+
+    expect(result.status).toBe(TimeOffRequestStatus.APPROVED);
+    expect(updatedRequest).toMatchObject({
+      status: TimeOffRequestStatus.APPROVED,
+      approvedBy: 'mgr_sam',
+      managerDecisionReason: 'Approved after HCM anniversary refresh',
+    });
+    expect(reservation).toMatchObject({
+      status: BalanceReservationStatus.RELEASED,
+    });
+    expect(snapshot).toMatchObject({
+      availableUnits: 6000,
+      sourceVersion: '2026-04-10T12:01:00.000Z#4',
+    });
+  });
 });

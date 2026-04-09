@@ -529,4 +529,132 @@ describe('ReviewTimeOffRequestService', () => {
     expect(balanceReservationRepository.updateStatusByRequestId).not.toHaveBeenCalled();
     expect(result.status).toBe(TimeOffRequestStatus.SYNC_FAILED);
   });
+
+  it('approves a request already in REQUIRES_REVIEW without consuming a released reservation', async () => {
+    const manager = new EmployeeBuilder()
+      .withId('mgr_sam')
+      .withLocationId('loc_ny')
+      .build();
+    const employee = new EmployeeBuilder()
+      .withId('emp_alice')
+      .withLocationId('loc_ny')
+      .withManagerId('mgr_sam')
+      .build();
+    const reviewedRequest = new TimeOffRequestBuilder()
+      .withId('req_review_resume_1')
+      .withEmployeeId('emp_alice')
+      .withLocationId('loc_ny')
+      .withRequestedUnits(2000)
+      .withStatus(TimeOffRequestStatus.REQUIRES_REVIEW)
+      .build();
+    const releasedReservation = new BalanceReservationBuilder()
+      .fromRequest(reviewedRequest)
+      .withStatus(BalanceReservationStatus.RELEASED)
+      .build();
+    const approvedRequest = new TimeOffRequestBuilder()
+      .withId('req_review_resume_1')
+      .withEmployeeId('emp_alice')
+      .withLocationId('loc_ny')
+      .withRequestedUnits(2000)
+      .withStatus(TimeOffRequestStatus.APPROVED)
+      .withApprovedBy('mgr_sam')
+      .withManagerDecisionReason('Approved after HCM refresh')
+      .build();
+
+    idempotencyKeyRepository.findByScopeAndKey.mockResolvedValue(null);
+    idempotencyKeyRepository.create.mockResolvedValue(
+      new IdempotencyKeyBuilder()
+        .withId('idem_review_resume_1')
+        .withScope('timeoff.approve')
+        .withIdempotencyKey('approve-reviewed-1')
+        .build(),
+    );
+    employeeRepository.findById.mockResolvedValueOnce(manager);
+    timeOffRequestRepository.findById.mockResolvedValue(reviewedRequest);
+    employeeRepository.findById.mockResolvedValueOnce(employee);
+    balanceReservationRepository.findByRequestId.mockResolvedValue(
+      releasedReservation,
+    );
+    hcmClient.getBalance.mockResolvedValue({
+      employeeId: 'emp_alice',
+      locationId: 'loc_ny',
+      availableUnits: 8000,
+      sourceVersion: '2026-04-10T12:00:00.000Z#3',
+      sourceUpdatedAt: '2026-04-10T12:00:00.000Z',
+    });
+    balanceSnapshotRepository.upsert
+      .mockResolvedValueOnce(
+        new BalanceSnapshotBuilder()
+          .withEmployeeId('emp_alice')
+          .withLocationId('loc_ny')
+          .withAvailableUnits(8000)
+          .withSourceVersion('2026-04-10T12:00:00.000Z#3')
+          .withSourceUpdatedAt(new Date('2026-04-10T12:00:00.000Z'))
+          .build(),
+      )
+      .mockResolvedValueOnce(
+        new BalanceSnapshotBuilder()
+          .withEmployeeId('emp_alice')
+          .withLocationId('loc_ny')
+          .withAvailableUnits(6000)
+          .withSourceVersion('2026-04-10T12:01:00.000Z#4')
+          .withSourceUpdatedAt(new Date('2026-04-10T12:01:00.000Z'))
+          .build(),
+      );
+    balanceReservationRepository.findActiveByEmployeeAndLocation.mockResolvedValue(
+      [],
+    );
+    hcmClient.applyBalanceAdjustment.mockResolvedValue({
+      accepted: true,
+      employeeId: 'emp_alice',
+      locationId: 'loc_ny',
+      availableUnits: 6000,
+      sourceVersion: '2026-04-10T12:01:00.000Z#4',
+      sourceUpdatedAt: '2026-04-10T12:01:00.000Z',
+    });
+    timeOffRequestRepository.updateDecision.mockResolvedValue(approvedRequest);
+    auditLogRepository.create.mockResolvedValue({
+      id: 'audit_review_resume_1',
+      action: 'TIME_OFF_REQUEST_APPROVED',
+      actorType: AuditActorType.MANAGER,
+      actorId: 'mgr_sam',
+      requestId: reviewedRequest.id,
+      syncRunId: null,
+      entityType: 'time_off_request',
+      entityId: reviewedRequest.id,
+      metadata: '{}',
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    });
+    idempotencyKeyRepository.markStatus.mockResolvedValue(
+      new IdempotencyKeyBuilder()
+        .withId('idem_review_resume_1')
+        .withScope('timeoff.approve')
+        .withStatus(IdempotencyStatus.COMPLETED)
+        .build(),
+    );
+
+    const result = await service.execute({
+      actorId: 'mgr_sam',
+      decision: 'APPROVE',
+      idempotencyKey: 'approve-reviewed-1',
+      reason: 'Approved after HCM refresh',
+      requestId: reviewedRequest.id,
+    });
+
+    expect(hcmClient.applyBalanceAdjustment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: reviewedRequest.id,
+        employeeId: 'emp_alice',
+        locationId: 'loc_ny',
+        deltaUnits: -2000,
+      }),
+    );
+    expect(balanceReservationRepository.updateStatusByRequestId).not.toHaveBeenCalledWith(
+      reviewedRequest.id,
+      BalanceReservationStatus.CONSUMED,
+      expect.anything(),
+    );
+    expect(result.status).toBe(TimeOffRequestStatus.APPROVED);
+  });
 });

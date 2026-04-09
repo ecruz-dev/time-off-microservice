@@ -11,6 +11,7 @@ import {
   HCM_BATCH_PULL_SOURCE,
   HCM_BATCH_PUSH_SOURCE,
 } from '../hcm-sync.constants';
+import { ReconciliationService } from '../../reconciliation/application/reconciliation.service';
 import {
   BatchSyncSummary,
   HcmBalancePayload,
@@ -26,6 +27,7 @@ export class HcmSyncService {
     private readonly balanceSnapshotRepository: BalanceSnapshotRepository,
     private readonly syncRunRepository: SyncRunRepository,
     private readonly auditLogRepository: AuditLogRepository,
+    private readonly reconciliationService: ReconciliationService,
     private readonly hcmClient: HcmClient,
   ) {}
 
@@ -53,6 +55,9 @@ export class HcmSyncService {
     }
 
     const startedAt = new Date();
+    let recordsSkipped = 0;
+    let recordsUpdated = 0;
+    let requestsFlagged = 0;
     const syncRun = await this.syncRunRepository.create({
       source,
       externalRunId: payload.runId,
@@ -66,7 +71,30 @@ export class HcmSyncService {
     try {
       await this.prisma.$transaction(async (tx) => {
         for (const record of payload.records) {
-          await this.balanceSnapshotRepository.upsert(
+          const previousSnapshot =
+            await this.balanceSnapshotRepository.findByEmployeeAndLocation(
+              record.employeeId,
+              record.locationId,
+              tx,
+            );
+          const disposition =
+            this.reconciliationService.getSnapshotChangeDisposition(
+              previousSnapshot,
+              {
+                availableUnits: record.availableUnits,
+                employeeId: record.employeeId,
+                locationId: record.locationId,
+                sourceUpdatedAt: new Date(record.sourceUpdatedAt),
+                sourceVersion: record.sourceVersion,
+              },
+            );
+
+          if (disposition !== 'APPLY') {
+            recordsSkipped += 1;
+            continue;
+          }
+
+          const nextSnapshot = await this.balanceSnapshotRepository.upsert(
             {
               employeeId: record.employeeId,
               locationId: record.locationId,
@@ -77,6 +105,19 @@ export class HcmSyncService {
             },
             tx,
           );
+          const reconciliationResult =
+            await this.reconciliationService.reconcileSnapshotChange(
+              {
+                nextSnapshot,
+                previousSnapshot,
+                source,
+                syncRunId: syncRun.id,
+              },
+              tx,
+            );
+
+          recordsUpdated += reconciliationResult.snapshotUpdated ? 1 : 0;
+          requestsFlagged += reconciliationResult.requestsFlagged;
         }
 
         await this.auditLogRepository.create(
@@ -93,7 +134,10 @@ export class HcmSyncService {
             metadata: JSON.stringify({
               externalRunId: payload.runId,
               recordsReceived: payload.records.length,
-              recordsApplied: payload.records.length,
+              recordsApplied: payload.records.length - recordsSkipped,
+              recordsSkipped,
+              recordsUpdated,
+              requestsFlagged,
             }),
             occurredAt: startedAt,
           },
@@ -107,11 +151,17 @@ export class HcmSyncService {
         {
           completedAt: new Date(),
           recordsReceived: payload.records.length,
-          recordsApplied: payload.records.length,
+          recordsApplied: payload.records.length - recordsSkipped,
         },
       );
 
-      return this.toBatchSyncSummary(completedRun, false);
+      return this.toBatchSyncSummary(
+        completedRun,
+        false,
+        recordsSkipped,
+        recordsUpdated,
+        requestsFlagged,
+      );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unknown HCM sync failure.';
@@ -127,13 +177,16 @@ export class HcmSyncService {
         },
       );
 
-      return this.toBatchSyncSummary(failedRun, false);
+      return this.toBatchSyncSummary(failedRun, false, 0, 0, 0);
     }
   }
 
   private toBatchSyncSummary(
     syncRun: SyncRun,
     reusedExistingRun: boolean,
+    recordsSkipped = 0,
+    recordsUpdated = 0,
+    requestsFlagged = 0,
   ): BatchSyncSummary {
     return {
       syncRunId: syncRun.id,
@@ -145,6 +198,9 @@ export class HcmSyncService {
       completedAt: syncRun.completedAt?.toISOString() ?? null,
       recordsReceived: syncRun.recordsReceived,
       recordsApplied: syncRun.recordsApplied,
+      recordsSkipped,
+      recordsUpdated,
+      requestsFlagged,
       reusedExistingRun,
     };
   }

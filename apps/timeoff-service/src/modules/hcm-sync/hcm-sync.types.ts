@@ -53,5 +53,8 @@ export interface BatchSyncSummary {
   completedAt: string | null;
   recordsReceived: number;
   recordsApplied: number;
+  recordsSkipped: number;
+  recordsUpdated: number;
+  requestsFlagged: number;
   reusedExistingRun: boolean;
 }

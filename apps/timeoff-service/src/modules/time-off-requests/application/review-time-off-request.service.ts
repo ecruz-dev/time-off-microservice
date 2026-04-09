@@ -188,7 +188,12 @@ export class ReviewTimeOffRequestService {
       expiresAt: Date | null;
     } | null;
   }): Promise<TimeOffRequest> {
-    if (!input.reservation) {
+    const hasActiveReservation =
+      input.reservation?.status === BalanceReservationStatus.ACTIVE;
+    const canProceedWithoutReservation =
+      input.request.status === TimeOffRequestStatus.REQUIRES_REVIEW;
+
+    if (!hasActiveReservation && !canProceedWithoutReservation) {
       return this.markRequestForReview({
         action: 'TIME_OFF_REQUEST_REQUIRES_REVIEW',
         managerId: input.managerId,
@@ -341,11 +346,13 @@ export class ReviewTimeOffRequestService {
         tx,
       );
 
-      await this.balanceReservationRepository.updateStatusByRequestId(
-        input.request.id,
-        BalanceReservationStatus.CONSUMED,
-        tx,
-      );
+      if (hasActiveReservation) {
+        await this.balanceReservationRepository.updateStatusByRequestId(
+          input.request.id,
+          BalanceReservationStatus.CONSUMED,
+          tx,
+        );
+      }
 
       await this.auditLogRepository.create(
         {
@@ -643,7 +650,11 @@ export class ReviewTimeOffRequestService {
             TimeOffRequestStatus.SYNC_FAILED,
             TimeOffRequestStatus.REQUIRES_REVIEW,
           ]
-        : [TimeOffRequestStatus.PENDING, TimeOffRequestStatus.SYNC_FAILED];
+        : [
+            TimeOffRequestStatus.PENDING,
+            TimeOffRequestStatus.SYNC_FAILED,
+            TimeOffRequestStatus.REQUIRES_REVIEW,
+          ];
 
     if (!allowedStatuses.includes(request.status)) {
       throw new RequestCreationError(

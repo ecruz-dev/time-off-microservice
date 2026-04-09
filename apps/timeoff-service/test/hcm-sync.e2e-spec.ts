@@ -51,6 +51,11 @@ describe('timeoff-service hcm sync (e2e)', () => {
     await request(hcmMockApp.getHttpServer()).post('/scenarios/reset').expect(201);
 
     await prisma.auditLog.deleteMany();
+    await prisma.outboxEvent.deleteMany();
+    await prisma.balanceReservation.deleteMany();
+    await prisma.timeOffRequest.deleteMany();
+    await prisma.idempotencyKey.deleteMany();
+    await prisma.employee.deleteMany();
     await prisma.syncRun.deleteMany();
     await prisma.balanceSnapshot.deleteMany();
   });
@@ -140,6 +145,7 @@ describe('timeoff-service hcm sync (e2e)', () => {
     });
     const syncRuns = await prisma.syncRun.findMany();
     const auditLogs = await prisma.auditLog.findMany();
+    const outboxEvents = await prisma.outboxEvent.findMany();
 
     expect(firstResponse.body).toMatchObject({
       externalRunId: 'push-run-1',
@@ -147,6 +153,9 @@ describe('timeoff-service hcm sync (e2e)', () => {
       status: 'COMPLETED',
       recordsReceived: 2,
       recordsApplied: 2,
+      recordsSkipped: 0,
+      recordsUpdated: 2,
+      requestsFlagged: 0,
       reusedExistingRun: false,
     });
     expect(secondResponse.body).toMatchObject({
@@ -155,7 +164,8 @@ describe('timeoff-service hcm sync (e2e)', () => {
     });
     expect(snapshots).toHaveLength(2);
     expect(syncRuns).toHaveLength(1);
-    expect(auditLogs).toHaveLength(1);
+    expect(auditLogs).toHaveLength(3);
+    expect(outboxEvents).toHaveLength(2);
     expect(snapshots[0]).toMatchObject({
       employeeId: 'emp_push_alice',
       locationId: 'loc_ny',
@@ -200,6 +210,9 @@ describe('timeoff-service hcm sync (e2e)', () => {
       status: 'COMPLETED',
       recordsReceived: 3,
       recordsApplied: 3,
+      recordsSkipped: 0,
+      recordsUpdated: 3,
+      requestsFlagged: 0,
       reusedExistingRun: false,
     });
     expect(aliceSnapshot).toMatchObject({
@@ -212,6 +225,69 @@ describe('timeoff-service hcm sync (e2e)', () => {
       '2026-04-09T10:05:00.000Z',
     );
     expect(syncRun?.source).toBe('hcm-batch-pull');
+  });
+
+  it('skips stale snapshot versions instead of overwriting newer balances', async () => {
+    const newerPayload = buildHcmBatchBalanceSnapshotRequest({
+      runId: 'version-run-newer',
+      sentAt: '2026-04-10T10:00:00.000Z',
+      records: [
+        buildHcmBalancePayload({
+          employeeId: 'emp_versioned',
+          locationId: 'loc_ny',
+          availableUnits: 9000,
+          sourceVersion: 'version-2',
+          sourceUpdatedAt: '2026-04-10T10:00:00.000Z',
+        }),
+      ],
+    });
+    const olderPayload = buildHcmBatchBalanceSnapshotRequest({
+      runId: 'version-run-older',
+      sentAt: '2026-04-09T10:00:00.000Z',
+      records: [
+        buildHcmBalancePayload({
+          employeeId: 'emp_versioned',
+          locationId: 'loc_ny',
+          availableUnits: 7000,
+          sourceVersion: 'version-1',
+          sourceUpdatedAt: '2026-04-09T10:00:00.000Z',
+        }),
+      ],
+    });
+
+    await request(timeoffApp.getHttpServer())
+      .post('/internal/hcm-sync/balance-snapshots')
+      .set('x-internal-sync-token', 'test-internal-sync-token')
+      .send(newerPayload)
+      .expect(201);
+    const staleResponse = await request(timeoffApp.getHttpServer())
+      .post('/internal/hcm-sync/balance-snapshots')
+      .set('x-internal-sync-token', 'test-internal-sync-token')
+      .send(olderPayload)
+      .expect(201);
+
+    const versionedSnapshot = await prisma.balanceSnapshot.findUnique({
+      where: {
+        employeeId_locationId: {
+          employeeId: 'emp_versioned',
+          locationId: 'loc_ny',
+        },
+      },
+    });
+
+    expect(staleResponse.body).toMatchObject({
+      recordsApplied: 0,
+      recordsSkipped: 1,
+      recordsUpdated: 0,
+      requestsFlagged: 0,
+    });
+    expect(versionedSnapshot).toMatchObject({
+      availableUnits: 9000,
+      sourceVersion: 'version-2',
+    });
+    expect(versionedSnapshot?.sourceUpdatedAt.toISOString()).toBe(
+      '2026-04-10T10:00:00.000Z',
+    );
   });
 
   it('rejects batch sync endpoints when the internal token is missing', async () => {
