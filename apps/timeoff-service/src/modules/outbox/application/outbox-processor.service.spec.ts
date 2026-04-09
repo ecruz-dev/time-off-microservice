@@ -360,4 +360,71 @@ describe('OutboxProcessorService', () => {
       expect.anything(),
     );
   });
+
+  it('skips a queued retry once the request no longer requires sync recovery', async () => {
+    const event = new OutboxEventBuilder()
+      .withId('outbox_retry_skip_1')
+      .withEventType(APPROVAL_SYNC_RETRY_EVENT)
+      .withPayload({
+        employeeId: 'emp_alice',
+        locationId: 'loc_ny',
+        managerId: 'mgr_sam',
+        reason: 'Approved',
+        requestId: 'req_retry_skip_1',
+        requestedUnits: 2000,
+      })
+      .build();
+    const approvedRequest = new TimeOffRequestBuilder()
+      .withId('req_retry_skip_1')
+      .withEmployeeId('emp_alice')
+      .withLocationId('loc_ny')
+      .withRequestedUnits(2000)
+      .withStatus(TimeOffRequestStatus.APPROVED)
+      .withApprovedBy('mgr_sam')
+      .build();
+
+    outboxEventRepository.listPending.mockResolvedValue([event]);
+    outboxEventRepository.markStatus.mockResolvedValue(event);
+    timeOffRequestRepository.findById.mockResolvedValue(approvedRequest);
+    auditLogRepository.create.mockResolvedValue({
+      id: 'audit_retry_skipped',
+      action: 'OUTBOX_EVENT_SKIPPED',
+      actorType: AuditActorType.SYSTEM,
+      actorId: 'outbox-processor',
+      requestId: approvedRequest.id,
+      syncRunId: null,
+      entityType: 'outbox_event',
+      entityId: event.id,
+      metadata: '{}',
+      occurredAt: new Date(),
+      createdAt: new Date(),
+    });
+
+    const result = await service.processPending(1);
+
+    expect(result).toEqual({
+      failedPermanently: 0,
+      processed: 1,
+      releasedForReview: 0,
+      retried: 0,
+      succeeded: 0,
+    });
+    expect(hcmClient.applyBalanceAdjustment).not.toHaveBeenCalled();
+    expect(outboxEventRepository.markStatus).toHaveBeenNthCalledWith(
+      2,
+      event.id,
+      OutboxEventStatus.SENT,
+      expect.objectContaining({
+        attempts: 1,
+      }),
+      expect.anything(),
+    );
+    expect(auditLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'OUTBOX_EVENT_SKIPPED',
+        requestId: approvedRequest.id,
+      }),
+      expect.anything(),
+    );
+  });
 });

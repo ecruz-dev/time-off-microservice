@@ -1,7 +1,11 @@
 import { AddressInfo } from 'node:net';
 
 import { INestApplication } from '@nestjs/common';
-import { OutboxEventStatus, TimeOffRequestStatus } from '@prisma/client';
+import {
+  BalanceReservationStatus,
+  OutboxEventStatus,
+  TimeOffRequestStatus,
+} from '@prisma/client';
 import * as request from 'supertest';
 
 import { createHttpApp } from '@app/testing';
@@ -203,6 +207,83 @@ describe('operational outbox and audit flows (e2e)', () => {
       ]);
   });
 
+  it('skips a queued retry after batch reconciliation moves the request to REQUIRES_REVIEW', async () => {
+    const requestId = await createEmployeeRequest('ops-create-2');
+
+    await request(hcmMockApp.getHttpServer())
+      .post('/scenarios/force-next-adjustment-error')
+      .send({
+        code: 'UPSTREAM_TIMEOUT',
+        message: 'The mock HCM is simulating a transient outage.',
+      })
+      .expect(201);
+
+    await request(timeoffApp.getHttpServer())
+      .post('/graphql')
+      .set('x-actor-id', 'mgr_sam')
+      .set('x-actor-role', 'MANAGER')
+      .set('idempotency-key', 'ops-approve-2')
+      .send({
+        query: APPROVE_TIME_OFF_REQUEST_MUTATION,
+        variables: {
+          input: {
+            requestId,
+            reason: 'Approve and retry if needed',
+          },
+        },
+      })
+      .expect(200);
+
+    await request(hcmMockApp.getHttpServer())
+      .post('/scenarios/drift')
+      .send({
+        employeeId: 'emp_alice',
+        locationId: 'loc_ny',
+        availableUnits: 1000,
+        sourceUpdatedAt: '2026-04-10T09:00:00.000Z',
+      })
+      .expect(201);
+
+    const syncResponse = await pullBatchSync();
+
+    const processResponse = await request(timeoffApp.getHttpServer())
+      .post('/internal/outbox/process')
+      .set('x-internal-sync-token', 'test-internal-sync-token')
+      .send({})
+      .expect(201);
+
+    const updatedRequest = await prisma.timeOffRequest.findUnique({
+      where: { id: requestId },
+    });
+    const reservation = await prisma.balanceReservation.findUnique({
+      where: { requestId },
+    });
+    const outboxEvent = await prisma.outboxEvent.findFirst({
+      where: { aggregateId: requestId },
+    });
+    const auditTrailResponse = await request(timeoffApp.getHttpServer())
+      .get(`/internal/audit/requests/${requestId}`)
+      .set('x-internal-sync-token', 'test-internal-sync-token')
+      .expect(200);
+
+    expect(syncResponse.body.requestsFlagged).toBe(1);
+    expect(processResponse.body.processed).toBeGreaterThanOrEqual(1);
+    expect(processResponse.body.releasedForReview).toBe(0);
+    expect(processResponse.body.retried).toBe(0);
+    expect(processResponse.body.succeeded).toBe(0);
+    expect(updatedRequest?.status).toBe(TimeOffRequestStatus.REQUIRES_REVIEW);
+    expect(reservation?.status).toBe(BalanceReservationStatus.RELEASED);
+    expect(outboxEvent?.status).toBe(OutboxEventStatus.SENT);
+    expect(auditTrailResponse.body.map((entry: { action: string }) => entry.action))
+      .toEqual([
+        'TIME_OFF_REQUEST_CREATED',
+        'TIME_OFF_REQUEST_SYNC_FAILED',
+        'TIME_OFF_REQUEST_SYNC_RETRY_ENQUEUED',
+        'BALANCE_RECONCILIATION_FLAGGED',
+        'OUTBOX_EVENT_SKIPPED',
+      ]);
+  });
+
   async function createEmployeeRequest(idempotencyKey: string): Promise<string> {
     const response = await request(timeoffApp.getHttpServer())
       .post('/graphql')
@@ -224,5 +305,13 @@ describe('operational outbox and audit flows (e2e)', () => {
       .expect(200);
 
     return response.body.data.createTimeOffRequest.id as string;
+  }
+
+  async function pullBatchSync() {
+    return request(timeoffApp.getHttpServer())
+      .post('/internal/hcm-sync/pull/balance-snapshots')
+      .set('x-internal-sync-token', 'test-internal-sync-token')
+      .send({})
+      .expect(201);
   }
 });

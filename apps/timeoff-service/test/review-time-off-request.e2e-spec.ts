@@ -169,6 +169,61 @@ describe('manager review mutations (e2e)', () => {
     expect(hcmBalance.body.availableUnits).toBe(6000);
   });
 
+  it('replays an approval for the same idempotency key without double-deducting the HCM balance', async () => {
+    const requestId = await createEmployeeRequest('approve-create-replay-1');
+
+    const firstResponse = await request(timeoffApp.getHttpServer())
+      .post('/graphql')
+      .set('x-actor-id', 'mgr_sam')
+      .set('x-actor-role', 'MANAGER')
+      .set('idempotency-key', 'approve-review-replay-1')
+      .send({
+        query: APPROVE_TIME_OFF_REQUEST_MUTATION,
+        variables: {
+          input: {
+            requestId,
+            reason: 'Approved once',
+          },
+        },
+      })
+      .expect(200);
+    const secondResponse = await request(timeoffApp.getHttpServer())
+      .post('/graphql')
+      .set('x-actor-id', 'mgr_sam')
+      .set('x-actor-role', 'MANAGER')
+      .set('idempotency-key', 'approve-review-replay-1')
+      .send({
+        query: APPROVE_TIME_OFF_REQUEST_MUTATION,
+        variables: {
+          input: {
+            requestId,
+            reason: 'Approved once',
+          },
+        },
+      })
+      .expect(200);
+
+    const hcmBalance = await request(hcmMockApp.getHttpServer())
+      .get('/hcm/balances/emp_alice')
+      .query({ locationId: 'loc_ny' })
+      .expect(200);
+
+    expect(firstResponse.body.errors).toBeUndefined();
+    expect(secondResponse.body.errors).toBeUndefined();
+    expect(firstResponse.body.data.approveTimeOffRequest).toMatchObject({
+      id: requestId,
+      status: TimeOffRequestStatus.APPROVED,
+      approvedBy: 'mgr_sam',
+    });
+    expect(secondResponse.body.data.approveTimeOffRequest).toMatchObject({
+      id: requestId,
+      status: TimeOffRequestStatus.APPROVED,
+      approvedBy: 'mgr_sam',
+    });
+    expect(hcmBalance.body.availableUnits).toBe(6000);
+    expect(await prisma.idempotencyKey.count()).toBe(2);
+  });
+
   it('rejects a request and releases the reservation', async () => {
     const requestId = await createEmployeeRequest('reject-create-1');
 
@@ -203,6 +258,53 @@ describe('manager review mutations (e2e)', () => {
     });
     expect(updatedRequest?.status).toBe(TimeOffRequestStatus.REJECTED);
     expect(reservation?.status).toBe(BalanceReservationStatus.RELEASED);
+  });
+
+  it('rejects a second approval attempt after the request is already approved', async () => {
+    const requestId = await createEmployeeRequest('approve-create-double-1');
+
+    await request(timeoffApp.getHttpServer())
+      .post('/graphql')
+      .set('x-actor-id', 'mgr_sam')
+      .set('x-actor-role', 'MANAGER')
+      .set('idempotency-key', 'approve-review-double-1')
+      .send({
+        query: APPROVE_TIME_OFF_REQUEST_MUTATION,
+        variables: {
+          input: {
+            requestId,
+            reason: 'Approved',
+          },
+        },
+      })
+      .expect(200);
+
+    const secondApprovalResponse = await request(timeoffApp.getHttpServer())
+      .post('/graphql')
+      .set('x-actor-id', 'mgr_sam')
+      .set('x-actor-role', 'MANAGER')
+      .set('idempotency-key', 'approve-review-double-2')
+      .send({
+        query: APPROVE_TIME_OFF_REQUEST_MUTATION,
+        variables: {
+          input: {
+            requestId,
+            reason: 'Approved again',
+          },
+        },
+      })
+      .expect(200);
+
+    const hcmBalance = await request(hcmMockApp.getHttpServer())
+      .get('/hcm/balances/emp_alice')
+      .query({ locationId: 'loc_ny' })
+      .expect(200);
+
+    expect(secondApprovalResponse.body.data).toBeNull();
+    expect(secondApprovalResponse.body.errors[0].extensions.code).toBe(
+      'CONFLICT',
+    );
+    expect(hcmBalance.body.availableUnits).toBe(6000);
   });
 
   it('moves the request to REQUIRES_REVIEW when HCM balance drift invalidates approval', async () => {

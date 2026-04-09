@@ -252,6 +252,39 @@ describe('CreateTimeOffRequestService', () => {
     expect(balanceReservationRepository.create).not.toHaveBeenCalled();
   });
 
+  it('rejects an in-progress duplicate submission for the same idempotency key', async () => {
+    idempotencyKeyRepository.findByScopeAndKey.mockResolvedValue(
+      new IdempotencyKeyBuilder()
+        .withId('idem_in_progress')
+        .withIdempotencyKey('request-create-duplicate')
+        .withFingerprint(
+          'emp_alice:loc_ny:2026-05-11T00:00:00.000Z:2026-05-12T00:00:00.000Z:2000:Family trip',
+        )
+        .withStatus(IdempotencyStatus.IN_PROGRESS)
+        .build(),
+    );
+
+    await expect(
+      service.execute({
+        actorId: 'emp_alice',
+        idempotencyKey: 'request-create-duplicate',
+        locationId: 'loc_ny',
+        startDate: new Date('2026-05-11T00:00:00.000Z'),
+        endDate: new Date('2026-05-12T00:00:00.000Z'),
+        requestedUnits: 2000,
+        reason: 'Family trip',
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'A matching time-off request is already in progress.',
+    });
+
+    expect(employeeRepository.findById).not.toHaveBeenCalled();
+    expect(idempotencyKeyRepository.create).not.toHaveBeenCalled();
+    expect(timeOffRequestRepository.create).not.toHaveBeenCalled();
+    expect(balanceReservationRepository.create).not.toHaveBeenCalled();
+  });
+
   it('marks the idempotency key as failed when effective balance is insufficient', async () => {
     const employee = new EmployeeBuilder()
       .withId('emp_alice')

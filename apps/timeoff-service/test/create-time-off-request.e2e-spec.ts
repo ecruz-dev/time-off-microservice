@@ -198,6 +198,54 @@ describe('createTimeOffRequest mutation (e2e)', () => {
     expect(await prisma.idempotencyKey.count()).toBe(1);
   });
 
+  it('guards against stale-balance oversubscription once another request has already reserved time', async () => {
+    const firstResponse = await request(timeoffApp.getHttpServer())
+      .post('/graphql')
+      .set('x-actor-id', 'emp_alice')
+      .set('x-actor-role', 'EMPLOYEE')
+      .set('idempotency-key', 'graphql-create-oversubscribe-1')
+      .send({
+        query: CREATE_TIME_OFF_REQUEST_MUTATION,
+        variables: {
+          input: {
+            locationId: 'loc_ny',
+            startDate: '2026-06-10T00:00:00.000Z',
+            endDate: '2026-06-11T00:00:00.000Z',
+            requestedUnits: 6000,
+            reason: 'Summer trip',
+          },
+        },
+      })
+      .expect(200);
+
+    const secondResponse = await request(timeoffApp.getHttpServer())
+      .post('/graphql')
+      .set('x-actor-id', 'emp_alice')
+      .set('x-actor-role', 'EMPLOYEE')
+      .set('idempotency-key', 'graphql-create-oversubscribe-2')
+      .send({
+        query: CREATE_TIME_OFF_REQUEST_MUTATION,
+        variables: {
+          input: {
+            locationId: 'loc_ny',
+            startDate: '2026-06-12T00:00:00.000Z',
+            endDate: '2026-06-13T00:00:00.000Z',
+            requestedUnits: 3000,
+            reason: 'Extension',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(firstResponse.body.errors).toBeUndefined();
+    expect(secondResponse.body.data).toBeNull();
+    expect(secondResponse.body.errors[0].extensions.code).toBe(
+      'INSUFFICIENT_BALANCE',
+    );
+    expect(await prisma.timeOffRequest.count()).toBe(1);
+    expect(await prisma.balanceReservation.count()).toBe(1);
+  });
+
   it('returns a GraphQL error when the employee does not have sufficient balance', async () => {
     const response = await request(timeoffApp.getHttpServer())
       .post('/graphql')
