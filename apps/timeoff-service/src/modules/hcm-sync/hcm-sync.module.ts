@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { getHcmRuntimeConfig } from '@app/config';
+import { getHcmRuntimeConfig } from '../../../../../libs/config/src';
 
 import { DatabaseModule } from '../../database/database.module';
 import { ReconciliationModule } from '../reconciliation/reconciliation.module';

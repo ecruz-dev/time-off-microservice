@@ -7,7 +7,7 @@ import {
   TimeOffRequestStatus,
 } from '@prisma/client';
 
-import { OutboxRuntimeConfig } from '@app/config';
+import { OutboxRuntimeConfig } from '../../../../../../libs/config/src';
 
 import { PrismaService } from '../../../database/prisma.service';
 import {

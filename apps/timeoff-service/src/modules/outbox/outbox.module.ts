@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { getOutboxRuntimeConfig } from '@app/config';
+import { getOutboxRuntimeConfig } from '../../../../../libs/config/src';
 
 import { DatabaseModule } from '../../database/database.module';
 import { HcmSyncModule } from '../hcm-sync/hcm-sync.module';

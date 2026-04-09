@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
-import { getDatabaseUrl } from '@app/config';
+import { getDatabaseUrl } from '../../../../libs/config/src';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {

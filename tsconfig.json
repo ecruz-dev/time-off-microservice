@@ -15,8 +15,8 @@
     "strict": true,
     "moduleResolution": "node",
     "paths": {
-      "@app/config": ["libs/config/src/index.ts"],
-      "@app/testing": ["libs/testing/src/index.ts"]
+      "@app/config": ["libs/config/src/index"],
+      "@app/testing": ["libs/testing/src/index"]
     }
   },
   "include": ["apps/**/*.ts", "libs/**/*.ts", "prisma/**/*.ts", "test/**/*.ts"],

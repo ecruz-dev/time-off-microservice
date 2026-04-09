@@ -1,6 +1,6 @@
 import { BadGatewayException, Inject, Injectable } from '@nestjs/common';
 
-import { HcmRuntimeConfig } from '@app/config';
+import { HcmRuntimeConfig } from '../../../../../../libs/config/src';
 
 import { HCM_RUNTIME_CONFIG } from '../hcm-sync.constants';
 import {

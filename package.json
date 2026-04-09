@@ -21,6 +21,7 @@
     "lint": "node ./node_modules/eslint/bin/eslint.js \"{apps,libs,prisma}/**/*.ts\"",
     "format": "node ./node_modules/prettier/bin/prettier.cjs --write \"{apps,libs,docs,prisma,test}/**/*.{ts,js,json,md,prisma}\"",
     "test": "node ./node_modules/jest/bin/jest.js --config test/jest-unit.json --passWithNoTests",
+    "test:coverage": "node ./node_modules/jest/bin/jest.js --config test/jest-unit.json --passWithNoTests --coverage --coverageReporters=text-summary --coverageReporters=lcov",
     "test:e2e:timeoff-service": "node ./node_modules/jest/bin/jest.js --config apps/timeoff-service/test/jest-e2e.json",
     "test:e2e:hcm-mock": "node ./node_modules/jest/bin/jest.js --config apps/hcm-mock/test/jest-e2e.json",
     "test:e2e": "npm run test:e2e:timeoff-service && npm run test:e2e:hcm-mock"
