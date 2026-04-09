@@ -29,10 +29,14 @@
     "seed": "node -r ts-node/register prisma/seed.ts"
   },
   "dependencies": {
+    "@apollo/server": "^4.11.3",
+    "@nestjs/apollo": "^12.2.2",
     "@nestjs/common": "^10.4.15",
     "@nestjs/core": "^10.4.15",
+    "@nestjs/graphql": "^12.2.2",
     "@nestjs/platform-express": "^10.4.15",
     "@prisma/client": "^6.6.0",
+    "graphql": "^16.9.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
